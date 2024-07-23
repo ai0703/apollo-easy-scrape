@@ -159,12 +159,21 @@ function findAndSendTableData() {
             });
         }
 
+        // Extract and format website and LinkedIn URLs
+        const link = cell.querySelector('a');
+        if (link && link.href.includes('linkedin')) {
+            cell.setAttribute('data-linkedin', link.href);
+        } else if (link && !link.href.includes('mailto:')) {
+            cell.setAttribute('data-website', link.href);
+        }
+
         text = text.replace(/[^a-zA-Z0-9\s,.@-]/g, '').replace(/Â/g, '');
         cell.textContent = text;
     });
 
     return clonedTable.outerHTML;
 }
+
 
 function downloadTableAsCsv() {
     const tableContainer = document.getElementById('tableContainer');
@@ -178,15 +187,22 @@ function downloadTableAsCsv() {
 
     const rows = tableContainer.querySelectorAll("table tr");
     let nameIndex = -1;
+    let websiteIndex = -1;
+    let linkedInIndex = -1;
     let quickActionsIndex = -1;
     for (const row of rows) {
         let rowData = [];
         const cells = row.querySelectorAll("th, td");
         for (let i = 0; i < cells.length; i++) {
             if (row === rows[0]) {
+                // Processing header row to identify the indices
                 if (!headerProcessed) {
                     if (cells[i].innerText === "Name") {
                         nameIndex = i;
+                    } else if (cells[i].innerText === "Website") {
+                        websiteIndex = i;
+                    } else if (cells[i].innerText === "LinkedIn") {
+                        linkedInIndex = i;
                     } else if (cells[i].innerText === "Quick Actions") {
                         quickActionsIndex = i;
                         continue;
@@ -197,33 +213,23 @@ function downloadTableAsCsv() {
             }
 
             if (i === quickActionsIndex) continue;
-            let cellText = cells[i].innerText;
+
+            let cellText = cells[i].innerText.trim().replace(/[^a-zA-Z0-9\s,.@-]/g, '').replace(/Â/g, '').replace(/"/g, '""').replace(/#/g, '');
             if (i === nameIndex) {
-                if (row === rows[0] && !headerProcessed) {
-                    rowData.push(`"First Name"`, `"Last Name"`, `"Full Name"`);
-                } else {
-                    const names = cellText.split(' ');
-                    const firstName = names[0] || '';
-                    const lastName = names.slice(1).join(' ') || '';
-                    const fullName = cellText;
-                    rowData.push(`"${firstName}"`, `"${lastName}"`, `"${fullName}"`);
-                } 
-                continue;
+                const names = cellText.split(' ');
+                const firstName = names[0] || '';
+                const lastName = names.slice(1).join(' ') || '';
+                const fullName = cellText;
+                rowData.push(`"${firstName}"`, `"${lastName}"`, `"${fullName}"`);
+            } else if (i === websiteIndex) {
+                let website = cells[i].getAttribute('data-website') || " ";
+                rowData.push(`"${website}"`);
+            } else if (i === linkedInIndex) {
+                let linkedIn = cells[i].getAttribute('data-linkedin') || " ";
+                rowData.push(`"${linkedIn}"`);
+            } else {
+                rowData.push(`"${cellText}"`);
             }
-
-            if (cellText === "No email" || cellText === "Request Mobile Number" || cellText === "NA") {
-                cellText = " ";
-            }
-
-            cellText = cellText.replace(/[^a-zA-Z0-9\s,.@-]/g, '').replace(/Â/g, '');
-            cellText = cellText.replace(/"/g, '""').replace(/#/g, ''); 
-            cellText = cellText.trim();
-            rowData.push(`"${cellText}"`);
-        }
-
-        // Skip the row if it contains the word "Name" in a single cell after the first row
-        if (row !== rows[0] && rowData.some(cell => cell.includes("Name"))) {
-            continue;
         }
 
         csvContent += rowData.join(",") + "\r\n";
@@ -242,13 +248,3 @@ function downloadTableAsCsv() {
     link.click(); 
     document.body.removeChild(link); 
 }
-
-
-chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
-    if (message.tableData) {
-        allTableData.push(message.tableData);
-        document.getElementById('tableContainer').innerHTML = allTableData.join('');
-    } else if (message.error) {
-        document.getElementById('tableContainer').textContent = message.error;
-    }
-});
